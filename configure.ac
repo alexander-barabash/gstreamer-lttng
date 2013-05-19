@@ -551,6 +551,26 @@ AC_CHECK_LIB(dl, dladdr,
    LIBS="$LIBS -ldl")
 CFLAGS="$save_cflags"
 
+dnl lttng tracepoints
+AC_ARG_ENABLE(lttng-tracepoints,
+   AC_HELP_STRING([--enable-lttng-tracepoints],
+                  [generate lttng tracepoints @<:@default=no@:>@]),
+   [AS_CASE(
+       [$enableval], [no], [], [yes], [], [auto], [],
+       [AC_MSG_ERROR([bad value "$enableval" for --enable-lttng-tracepoints])])],
+   [enable_lttng_tracepoints=no])
+AS_IF([test "x$enable_lttng_tracepoints" != "xno"],
+      [PKG_CHECK_MODULES([LTTNG_UST], [lttng-ust >= 2.0],
+                         [AC_DEFINE(GST_ENABLE_LTTNG_TRACEPOINTS, [1],
+                                    [Enable LTTng tracepoints.])
+                          LIBS="$LIBS $LTTNG_UST_LIBS -ldl"
+                          CFLAGS="$LIBS $LTTNG_UST_CFLAGS"
+                          enable_lttng_tracepoints=yes],
+                         [AS_IF([test "x$enable_lttng_tracepoints" = "xyes"],
+                                [AC_MSG_ERROR([lttng-ust not found])],
+                                [enable_lttng_tracepoints=no])])])
+AM_CONDITIONAL(GST_ENABLE_LTTNG_TRACEPOINTS, [test "x$enable_lttng_tracepoints" = "xyes"])
+
 dnl *** checks for socket and nsl libraries ***
 AC_CHECK_FUNC(socket,,[AC_CHECK_LIB(socket,socket)])
 AC_CHECK_FUNC(gethostbyname,,[AC_CHECK_LIB(nsl,gethostbyname)])
@@ -920,6 +940,7 @@ Configuration
 	Unit testing support       : ${BUILD_CHECK}
 
 	Debug                      : ${USE_DEBUG}
+	LTTng tracepoints          : ${enable_lttng_tracepoints}
 	Profiling                  : ${USE_PROFILING}
 
 	Building benchmarks        : ${BUILD_BENCHMARKS}
