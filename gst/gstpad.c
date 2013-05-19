@@ -74,6 +74,7 @@
 #include "gsterror.h"
 #include "gstvalue.h"
 #include "glib-compat-private.h"
+#include "gst_tracepoints.h"
 
 GST_DEBUG_CATEGORY_STATIC (debug_dataflow);
 #define GST_CAT_DEFAULT GST_CAT_PADS
@@ -4223,6 +4224,7 @@ gst_pad_chain_data_unchecked (GstPad * pad, gboolean is_buffer, void *data,
   GST_PAD_STREAM_LOCK (pad);
 
   GST_OBJECT_LOCK (pad);
+  GST_FLOW_TRACEPOINT_PUSH_ENTER (pad, data);
   if (G_UNLIKELY (GST_PAD_IS_FLUSHING (pad)))
     goto flushing;
 
@@ -4295,6 +4297,8 @@ gst_pad_chain_data_unchecked (GstPad * pad, gboolean is_buffer, void *data,
         GST_DEBUG_FUNCPTR_NAME (chainlistfunc), gst_flow_get_name (ret));
   }
 
+  GST_FLOW_TRACEPOINT_PUSH_EXIT (pad, ret);
+
   GST_PAD_STREAM_UNLOCK (pad);
 
   return ret;
@@ -4331,12 +4335,15 @@ chain_groups:
     gst_buffer_list_iterator_free (it);
     gst_buffer_list_unref (list);
 
+    GST_FLOW_TRACEPOINT_PUSH_EXIT (pad, ret);
+
     return ret;
   }
 
   /* ERRORS */
 flushing:
   {
+    GST_FLOW_TRACEPOINT_PUSH_ERROR (pad, GST_FLOW_WRONG_STATE);
     gst_pad_data_unref (is_buffer, data);
     GST_CAT_LOG_OBJECT (GST_CAT_SCHEDULING, pad,
         "pushing, but pad was flushing");
@@ -4346,6 +4353,7 @@ flushing:
   }
 dropping:
   {
+    GST_FLOW_TRACEPOINT_PUSH_DROPPED (pad);
     gst_pad_data_unref (is_buffer, data);
     GST_DEBUG_OBJECT (pad, "Dropping buffer due to FALSE probe return");
     GST_PAD_STREAM_UNLOCK (pad);
@@ -4353,6 +4361,7 @@ dropping:
   }
 not_negotiated:
   {
+    GST_FLOW_TRACEPOINT_PUSH_ERROR (pad, GST_FLOW_NOT_NEGOTIATED);
     gst_pad_data_unref (is_buffer, data);
     GST_CAT_LOG_OBJECT (GST_CAT_SCHEDULING, pad,
         "pushing data but pad did not accept");
@@ -4361,6 +4370,7 @@ not_negotiated:
   }
 no_function:
   {
+    GST_FLOW_TRACEPOINT_PUSH_ERROR (pad, GST_FLOW_NOT_SUPPORTED);
     gst_pad_data_unref (is_buffer, data);
     GST_CAT_LOG_OBJECT (GST_CAT_SCHEDULING, pad,
         "pushing, but not chainhandler");
@@ -4459,6 +4469,8 @@ gst_pad_push_data (GstPad * pad, gboolean is_buffer, void *data,
 
   GST_OBJECT_LOCK (pad);
 
+  GST_FLOW_TRACEPOINT_PUSH_ENTER (pad, data);
+
   /* FIXME: this check can go away; pad_set_blocked could be implemented with
    * probes completely or probes with an extended pad block. */
   while (G_UNLIKELY (GST_PAD_IS_BLOCKED (pad)))
@@ -4512,6 +4524,8 @@ gst_pad_push_data (GstPad * pad, gboolean is_buffer, void *data,
 
   gst_object_unref (peer);
 
+  GST_FLOW_TRACEPOINT_PUSH_EXIT (pad, ret);
+
   return ret;
 
 push_groups:
@@ -4544,12 +4558,15 @@ push_groups:
     gst_buffer_list_iterator_free (it);
     gst_buffer_list_unref (list);
 
+    GST_FLOW_TRACEPOINT_PUSH_EXIT (pad, ret);
+
     return ret;
   }
 
   /* ERROR recovery here */
 flushed:
   {
+    GST_FLOW_TRACEPOINT_PUSH_ERROR (pad, ret);
     gst_pad_data_unref (is_buffer, data);
     GST_DEBUG_OBJECT (pad, "pad block stopped by flush");
     GST_OBJECT_UNLOCK (pad);
@@ -4557,12 +4574,14 @@ flushed:
   }
 dropped:
   {
+    GST_FLOW_TRACEPOINT_PUSH_DROPPED (pad);
     gst_pad_data_unref (is_buffer, data);
     GST_DEBUG_OBJECT (pad, "Dropping buffer due to FALSE probe return");
     return GST_FLOW_OK;
   }
 not_linked:
   {
+    GST_FLOW_TRACEPOINT_PUSH_ERROR (pad, GST_FLOW_NOT_LINKED);
     gst_pad_data_unref (is_buffer, data);
     GST_CAT_LOG_OBJECT (GST_CAT_SCHEDULING, pad,
         "pushing, but it was not linked");
@@ -4571,6 +4590,7 @@ not_linked:
   }
 not_negotiated:
   {
+    GST_FLOW_TRACEPOINT_PUSH_ERROR (pad, GST_FLOW_NOT_NEGOTIATED);
     gst_pad_data_unref (is_buffer, data);
     GST_CAT_DEBUG_OBJECT (GST_CAT_SCHEDULING, pad,
         "element pushed data then refused to accept the caps");
@@ -4712,7 +4732,11 @@ gst_pad_push (GstPad * pad, GstBuffer * buffer)
       "calling chainfunction &%s with buffer %" GST_PTR_FORMAT,
       GST_DEBUG_FUNCPTR_NAME (GST_PAD_CHAINFUNC (peer)), buffer);
 
+  GST_FLOW_TRACEPOINT_PUSH_ENTER (peer, buffer);
+
   ret = GST_PAD_CHAINFUNC (peer) (peer, buffer);
+
+  GST_FLOW_TRACEPOINT_PUSH_EXIT (peer, ret);
 
   GST_CAT_LOG_OBJECT (GST_CAT_SCHEDULING, pad,
       "called chainfunction &%s with buffer %p, returned %s",
@@ -4829,7 +4853,11 @@ gst_pad_push_list (GstPad * pad, GstBufferList * list)
   if (G_UNLIKELY (g_atomic_pointer_get (cache_ptr) == PAD_CACHE_INVALID))
     goto invalid;
 
+  GST_FLOW_TRACEPOINT_PUSH_ENTER (peer, list);
+
   ret = GST_PAD_CHAINLISTFUNC (peer) (peer, list);
+
+  GST_FLOW_TRACEPOINT_PUSH_EXIT (peer, ret);
 
   GST_PAD_STREAM_UNLOCK (peer);
 
@@ -4950,6 +4978,7 @@ gst_pad_get_range_unchecked (GstPad * pad, guint64 offset, guint size,
   GST_PAD_STREAM_LOCK (pad);
 
   GST_OBJECT_LOCK (pad);
+  GST_FLOW_TRACEPOINT_PULL_ENTER (pad);
   if (G_UNLIKELY (GST_PAD_IS_FLUSHING (pad)))
     goto flushing;
 
@@ -4990,11 +5019,13 @@ gst_pad_get_range_unchecked (GstPad * pad, guint64 offset, guint size,
     if (G_UNLIKELY (!gst_pad_configure_src (pad, caps, TRUE)))
       goto not_negotiated;
   }
+  GST_FLOW_TRACEPOINT_PULL_EXIT (pad, *buffer, ret);
   return ret;
 
   /* ERRORS */
 flushing:
   {
+    GST_FLOW_TRACEPOINT_PULL_ERROR (pad, GST_FLOW_WRONG_STATE);
     GST_CAT_LOG_OBJECT (GST_CAT_SCHEDULING, pad,
         "pulling range, but pad was flushing");
     GST_OBJECT_UNLOCK (pad);
@@ -5003,6 +5034,7 @@ flushing:
   }
 no_function:
   {
+    GST_FLOW_TRACEPOINT_PULL_ERROR (pad, GST_FLOW_NOT_SUPPORTED);
     GST_ELEMENT_ERROR (GST_PAD_PARENT (pad), CORE, PAD, (NULL),
         ("pullrange on pad %s:%s but it has no getrangefunction",
             GST_DEBUG_PAD_NAME (pad)));
@@ -5011,6 +5043,7 @@ no_function:
   }
 dropping:
   {
+    GST_FLOW_TRACEPOINT_PULL_ERROR (pad, GST_FLOW_UNEXPECTED);
     GST_CAT_LOG_OBJECT (GST_CAT_SCHEDULING, pad,
         "Dropping data after FALSE probe return");
     GST_PAD_STREAM_UNLOCK (pad);
@@ -5020,6 +5053,7 @@ dropping:
   }
 get_range_failed:
   {
+    GST_FLOW_TRACEPOINT_PULL_ERROR (pad, ret);
     *buffer = NULL;
     GST_CAT_LEVEL_LOG (GST_CAT_SCHEDULING,
         (ret >= GST_FLOW_UNEXPECTED) ? GST_LEVEL_INFO : GST_LEVEL_WARNING,
@@ -5028,6 +5062,7 @@ get_range_failed:
   }
 not_negotiated:
   {
+    GST_FLOW_TRACEPOINT_PULL_ERROR (pad, GST_FLOW_NOT_NEGOTIATED);
     gst_buffer_unref (*buffer);
     *buffer = NULL;
     GST_CAT_WARNING_OBJECT (GST_CAT_SCHEDULING, pad,
@@ -5115,6 +5150,8 @@ gst_pad_pull_range (GstPad * pad, guint64 offset, guint size,
 
   GST_OBJECT_LOCK (pad);
 
+  GST_FLOW_TRACEPOINT_PULL_ENTER (pad);
+
   while (G_UNLIKELY (GST_PAD_IS_BLOCKED (pad)))
     handle_pad_block (pad);
 
@@ -5154,11 +5191,13 @@ gst_pad_pull_range (GstPad * pad, guint64 offset, guint size,
     if (G_UNLIKELY (!gst_pad_configure_sink (pad, caps)))
       goto not_negotiated;
   }
+  GST_FLOW_TRACEPOINT_PULL_EXIT (pad, *buffer, ret);
   return ret;
 
   /* ERROR recovery here */
 not_connected:
   {
+    GST_FLOW_TRACEPOINT_PULL_ERROR (pad, GST_FLOW_NOT_LINKED);
     GST_CAT_LOG_OBJECT (GST_CAT_SCHEDULING, pad,
         "pulling range, but it was not linked");
     GST_OBJECT_UNLOCK (pad);
@@ -5166,6 +5205,7 @@ not_connected:
   }
 pull_range_failed:
   {
+    GST_FLOW_TRACEPOINT_PULL_ERROR (pad, ret);
     *buffer = NULL;
     GST_CAT_LEVEL_LOG (GST_CAT_SCHEDULING,
         (ret >= GST_FLOW_UNEXPECTED) ? GST_LEVEL_INFO : GST_LEVEL_WARNING,
@@ -5174,6 +5214,7 @@ pull_range_failed:
   }
 dropping:
   {
+    GST_FLOW_TRACEPOINT_PULL_ERROR (pad, GST_FLOW_UNEXPECTED);
     GST_CAT_LOG_OBJECT (GST_CAT_SCHEDULING, pad,
         "Dropping data after FALSE probe return");
     gst_buffer_unref (*buffer);
@@ -5182,6 +5223,7 @@ dropping:
   }
 not_negotiated:
   {
+    GST_FLOW_TRACEPOINT_PULL_ERROR (pad, GST_FLOW_NOT_NEGOTIATED);
     gst_buffer_unref (*buffer);
     *buffer = NULL;
     GST_CAT_WARNING_OBJECT (GST_CAT_SCHEDULING, pad,
@@ -5358,6 +5400,7 @@ gst_pad_send_event (GstPad * pad, GstEvent * event)
   g_return_val_if_fail (event != NULL, FALSE);
 
   GST_OBJECT_LOCK (pad);
+  GST_FLOW_TRACEPOINT_SEND_EVENT_ENTER (pad, event);
   if (GST_PAD_IS_SINK (pad)) {
     if (G_UNLIKELY (!GST_EVENT_IS_DOWNSTREAM (event)))
       goto wrong_direction;
@@ -5441,11 +5484,14 @@ gst_pad_send_event (GstPad * pad, GstEvent * event)
 
   GST_DEBUG_OBJECT (pad, "sent event, result %d", result);
 
+  GST_FLOW_TRACEPOINT_SEND_EVENT_EXIT (pad, result);
+
   return result;
 
   /* ERROR handling */
 wrong_direction:
   {
+    GST_FLOW_TRACEPOINT_SEND_EVENT_ERROR (pad);
     g_warning ("pad %s:%s sending %s event in wrong direction",
         GST_DEBUG_PAD_NAME (pad), GST_EVENT_TYPE_NAME (event));
     GST_OBJECT_UNLOCK (pad);
@@ -5454,6 +5500,7 @@ wrong_direction:
   }
 unknown_direction:
   {
+    GST_FLOW_TRACEPOINT_SEND_EVENT_ERROR (pad);
     g_warning ("pad %s:%s has invalid direction", GST_DEBUG_PAD_NAME (pad));
     GST_OBJECT_UNLOCK (pad);
     gst_event_unref (event);
@@ -5461,6 +5508,7 @@ unknown_direction:
   }
 no_function:
   {
+    GST_FLOW_TRACEPOINT_SEND_EVENT_ERROR (pad);
     g_warning ("pad %s:%s has no event handler, file a bug.",
         GST_DEBUG_PAD_NAME (pad));
     GST_OBJECT_UNLOCK (pad);
@@ -5471,6 +5519,7 @@ no_function:
   }
 flushing:
   {
+    GST_FLOW_TRACEPOINT_SEND_EVENT_ERROR (pad);
     GST_OBJECT_UNLOCK (pad);
     if (need_unlock)
       GST_PAD_STREAM_UNLOCK (pad);
@@ -5481,6 +5530,7 @@ flushing:
   }
 dropping:
   {
+    GST_FLOW_TRACEPOINT_SEND_EVENT_DROPPED (pad);
     GST_DEBUG_OBJECT (pad, "Dropping event after FALSE probe return");
     gst_event_unref (event);
     return FALSE;

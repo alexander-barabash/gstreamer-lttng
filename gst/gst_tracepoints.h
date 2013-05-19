@@ -22,10 +22,36 @@
 
 #ifndef _GST_TRACEPOINTS_H
 
+#include "gstpad.h"
+#include "gstghostpad.h"
+#include "gstbufferlist.h"
+
+extern GstPad *_priv_gst_ghostpad_get_target (GstGhostPad *gpad);
+
+enum GstFlowTracepointType {
+  GST_TRACEPOINT_FLAG_ENTER = 0,
+  GST_TRACEPOINT_FLAG_EXIT = 1,
+  GST_TRACEPOINT_FLAG_ERROR = 2,
+  GST_TRACEPOINT_FLAG_DROPPED = 3,
+};
+
+enum GstFlowTracepointKind {
+  GST_TRACEPOINT_FLAG_PUSH = 0,
+  GST_TRACEPOINT_FLAG_PULL = 1,
+  GST_TRACEPOINT_FLAG_SEND_EVENT = 2,
+};
+
 #define GST_TRACEPOINT_HELPER2(...) __VA_ARGS__
 #define GST_TRACEPOINT_HELPER(...) GST_TRACEPOINT_HELPER2 (__VA_ARGS__)
 #define GST_TRACEPOINT_EVENT(name, args, fields) \
     TRACEPOINT_EVENT (TRACEPOINT_PROVIDER, name, GST_TRACEPOINT_HELPER (args), GST_TRACEPOINT_HELPER (fields))
+
+#define ctf_gst_pad_field(name, ptr) ctf_integer_hex (gintptr, name, (gintptr) (ptr))
+#define ctf_gst_data_field(name, ptr) ctf_integer_hex (gintptr, name, (gintptr) (ptr))
+#define ctf_gst_flow_return_field(name, value) ctf_integer_hex (gint, name, (gint) (value))
+#define ctf_gst_thread_id_field(name) ctf_integer (guint16, name, gst_tracepoints_get_thread_id ())
+#define ctf_gst_tracepoint_type_field(name, type) ctf_integer (guint8, name, (guint8) (type))
+#define ctf_gst_tracepoint_kind_field(name, kind) ctf_integer (guint8, name, (guint8) (kind))
 
 #endif /* _GST_TRACEPOINTS_H */
 
@@ -42,17 +68,77 @@
 
 #include <lttng/tracepoint.h>
 
-GST_TRACEPOINT_EVENT (gst_sample_event,
-                      TP_ARGS (int, event_argument),
-                      TP_FIELDS (ctf_integer(int, event_argument, event_argument)))
+GST_TRACEPOINT_EVENT (gst_flow,
+                      TP_ARGS (GstPad *, pad,
+                               void *, data,
+                               GstFlowReturn, result,
+                               enum GstFlowTracepointKind, tracepoint_kind,
+                               enum GstFlowTracepointType, tracepoint_type),
+                      TP_FIELDS (ctf_gst_pad_field (pad, pad)
+                                 ctf_gst_data_field (data, data)
+                                 ctf_gst_flow_return_field (flow_return, result)
+                                 ctf_gst_thread_id_field (thread_id)
+                                 ctf_gst_tracepoint_type_field (tracepoint_type, tracepoint_type)
+                                 ctf_gst_tracepoint_kind_field (tracepoint_kind, tracepoint_kind)
+                                 ctf_string (element_name,
+                                             gst_tracepoints_get_pad_element_name_if_needed (pad, tracepoint_type))))
 
 #endif /* _GST_TRACEPOINTS_H */
 
 #include <lttng/tracepoint-event.h>
 
+#define GST_FLOW_TRACEPOINT_PUSH_ENTER(pad, data) \
+    GST_TRACEPOINT (gst_flow, pad, data, GST_FLOW_OK, GST_TRACEPOINT_FLAG_PUSH, GST_TRACEPOINT_FLAG_ENTER)
+
+#define GST_FLOW_TRACEPOINT_PUSH_EXIT(pad, ret) \
+    GST_TRACEPOINT (gst_flow, pad, NULL, ret, GST_TRACEPOINT_FLAG_PUSH, GST_TRACEPOINT_FLAG_EXIT)
+
+#define GST_FLOW_TRACEPOINT_PUSH_ERROR(pad, ret) \
+    GST_TRACEPOINT (gst_flow, pad, NULL, ret, GST_TRACEPOINT_FLAG_PUSH, GST_TRACEPOINT_FLAG_ERROR)
+
+#define GST_FLOW_TRACEPOINT_PUSH_DROPPED(pad) \
+    GST_TRACEPOINT (gst_flow, pad, NULL, GST_FLOW_OK, GST_TRACEPOINT_FLAG_PUSH, GST_TRACEPOINT_FLAG_DROPPED)
+
+#define GST_FLOW_TRACEPOINT_PULL_ENTER(pad) \
+    GST_TRACEPOINT (gst_flow, pad, NULL, GST_FLOW_OK, GST_TRACEPOINT_FLAG_PULL, GST_TRACEPOINT_FLAG_ENTER)
+
+#define GST_FLOW_TRACEPOINT_PULL_EXIT(pad, data, ret) \
+    GST_TRACEPOINT (gst_flow, pad, data, ret, GST_TRACEPOINT_FLAG_PULL, GST_TRACEPOINT_FLAG_EXIT)
+
+#define GST_FLOW_TRACEPOINT_PULL_ERROR(pad, ret) \
+    GST_TRACEPOINT (gst_flow, pad, NULL, ret, GST_TRACEPOINT_FLAG_PULL, GST_TRACEPOINT_FLAG_ERROR)
+
+#define GST_FLOW_TRACEPOINT_PULL_DROPPED(pad) \
+    GST_TRACEPOINT (gst_flow, pad, NULL, GST_FLOW_OK, GST_TRACEPOINT_FLAG_PULL, GST_TRACEPOINT_FLAG_DROPPED)
+
+#define GST_FLOW_TRACEPOINT_SEND_EVENT_ENTER(pad, event)                \
+    GST_TRACEPOINT (gst_flow, pad, event, GST_FLOW_OK, GST_TRACEPOINT_FLAG_SEND_EVENT, GST_TRACEPOINT_FLAG_ENTER)
+
+#define GST_FLOW_TRACEPOINT_SEND_EVENT_EXIT(pad, ret) \
+  GST_TRACEPOINT (gst_flow, pad, NULL, (ret) ? GST_FLOW_OK : GST_FLOW_ERROR, GST_TRACEPOINT_FLAG_SEND_EVENT, GST_TRACEPOINT_FLAG_EXIT)
+
+#define GST_FLOW_TRACEPOINT_SEND_EVENT_ERROR(pad) \
+    GST_TRACEPOINT (gst_flow, pad, NULL, GST_FLOW_ERROR, GST_TRACEPOINT_FLAG_SEND_EVENT, GST_TRACEPOINT_FLAG_ERROR)
+
+#define GST_FLOW_TRACEPOINT_SEND_EVENT_DROPPED(pad) \
+    GST_TRACEPOINT (gst_flow, pad, NULL, GST_FLOW_OK, GST_TRACEPOINT_FLAG_SEND_EVENT, GST_TRACEPOINT_FLAG_DROPPED)
+
 #define GST_TRACEPOINT(...) tracepoint (Gst, __VA_ARGS__)
 
 #else /* !GST_ENABLE_LTTNG_TRACEPOINTS */
+
+#define GST_FLOW_TRACEPOINT_PUSH_ENTER(pad, data)
+#define GST_FLOW_TRACEPOINT_PUSH_EXIT(pad, ret)
+#define GST_FLOW_TRACEPOINT_PUSH_ERROR(pad, ret)
+#define GST_FLOW_TRACEPOINT_PUSH_DROPPED(pad)
+#define GST_FLOW_TRACEPOINT_PULL_ENTER(pad)
+#define GST_FLOW_TRACEPOINT_PULL_EXIT(pad, data, ret)
+#define GST_FLOW_TRACEPOINT_PULL_ERROR(pad, ret)
+#define GST_FLOW_TRACEPOINT_PULL_DROPPED(pad)
+#define GST_FLOW_TRACEPOINT_SEND_EVENT_ENTER(pad, event)
+#define GST_FLOW_TRACEPOINT_SEND_EVENT_EXIT(pad, ret)
+#define GST_FLOW_TRACEPOINT_SEND_EVENT_ERROR(pad)
+#define GST_FLOW_TRACEPOINT_SEND_EVENT_DROPPED(pad)
 
 #define GST_TRACEPOINT(...)
 

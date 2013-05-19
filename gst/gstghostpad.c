@@ -1388,3 +1388,5 @@ link_failed:
     return FALSE;
   }
 }
+
+#include "gstghostpad_tracepoints.h"

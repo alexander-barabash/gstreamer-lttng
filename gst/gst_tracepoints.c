@@ -26,10 +26,67 @@
 #include "config.h"
 
 #ifdef GST_ENABLE_LTTNG_TRACEPOINTS
+#include "glib.h"
+#include "gstpad.h"
+#include "gstelement.h"
+
+enum GstFlowTracepointType;
+static const gchar *gst_tracepoints_get_pad_element_name_if_needed (GstPad *
+    pad, enum GstFlowTracepointType tracepoint_type);
+static guint16 gst_tracepoints_get_thread_id (void);
 
 #define GST_TRACEPOINTS_CREATE_PROBES
 #define TRACEPOINT_CREATE_PROBES
 #define TRACEPOINT_DEFINE
 #include "gst_tracepoints.h"
+
+static const gchar *
+gst_tracepoints_get_pad_element_name (GstPad * pad)
+{
+  const gchar *name = "";
+
+  if (pad != NULL) {
+    if (GST_IS_GHOST_PAD (pad)) {
+      name =
+          gst_tracepoints_get_pad_element_name (_priv_gst_ghostpad_get_target
+          (GST_GHOST_PAD (pad)));
+    } else if (GST_IS_PROXY_PAD (pad)) {
+      name =
+          gst_tracepoints_get_pad_element_name (GST_PAD_PEER (GST_PROXY_PAD
+              (pad)));
+    } else if (GST_PAD_PARENT (pad)) {
+      name = GST_ELEMENT_NAME (GST_PAD_PARENT (pad));
+    }
+  }
+
+  return name;
+}
+
+static const gchar *
+gst_tracepoints_get_pad_element_name_if_needed (GstPad * pad,
+    enum GstFlowTracepointType tracepoint_type)
+{
+  if (tracepoint_type == GST_TRACEPOINT_FLAG_ENTER) {
+    return gst_tracepoints_get_pad_element_name (pad);
+  } else {
+    return "";
+  }
+}
+
+static guint16
+gst_tracepoints_get_thread_id (void)
+{
+  static gint thread_counter;
+  static GPrivate key;
+  gintptr thread_id = (gintptr) g_private_get (&key);
+  if (G_UNLIKELY (thread_id == 0)) {
+    do {
+      thread_id = g_atomic_int_add (&thread_counter, 1) + 1;
+      thread_id = thread_id & 0xFFFF;   /* Leave 16 bits. */
+    } while (thread_id == 0);
+    g_private_set (&key, (gpointer) thread_id);
+  }
+  return thread_id;
+}
 
 #endif /* GST_ENABLE_LTTNG_TRACEPOINTS */
