@@ -32,6 +32,12 @@ else
 GST_PLUGIN_SRC = gstplugin.c
 endif
 
+if GST_ENABLE_LTTNG_TRACEPOINTS
+GST_TRACEPOINTS_SRC = gst_tracepoints.c
+else
+GST_TRACEPOINTS_SRC =
+endif
+
 SUBDIRS = $(SUBDIRS_PARSE)
 
 DIST_SUBDIRS = parse
@@ -106,7 +112,8 @@ libgstreamer_@GST_MAJORMINOR@_la_SOURCES = \
 	gstvalue.c		\
 	gstparse.c		\
 	$(GST_REGISTRY_SRC)	\
-	$(GST_LOADSAVE_SRC)
+	$(GST_LOADSAVE_SRC)	\
+	$(GST_TRACEPOINTS_SRC)
 
 # do not put files in the distribution that are generated
 nodist_libgstreamer_@GST_MAJORMINOR@_la_SOURCES = $(built_source_make)
