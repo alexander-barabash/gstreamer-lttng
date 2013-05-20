@@ -59,6 +59,7 @@ typedef enum GstFlowTracepointDataType {
 #define ctf_gst_tracepoint_type_field(name, type) ctf_integer (guint8, name, (guint8) (type))
 #define ctf_gst_tracepoint_kind_field(name, kind) ctf_integer (guint8, name, (guint8) (kind))
 #define ctf_gst_data_type_field(name, type) ctf_integer (guint8, name, (guint8) (type))
+#define ctf_gst_event_type_field(name, event) ctf_integer (gint, name, (gint) (event->type))
 
 #endif /* _GST_TRACEPOINTS_H */
 
@@ -95,6 +96,12 @@ GST_TRACEPOINT_EVENT (gst_flow_data,
                       TP_FIELDS (ctf_integer (guint, size, (data_type == GST_TRACEPOINT_DATA_TYPE_BUFFER) ? ((GstBuffer *) (data))->size : 0)
                                  ctf_gst_thread_id_field (thread_id)
                                  ctf_gst_data_type_field (data_type, ((trace_is_on ? (*trace_is_on = 1) : 0), data_type))))
+
+GST_TRACEPOINT_EVENT (gst_flow_event,
+                      TP_ARGS (GstEvent *, event),
+                      TP_FIELDS (ctf_gst_data_field (event, event)
+                                 ctf_gst_thread_id_field (thread_id)
+                                 ctf_gst_event_type_field (event_type, event)))
 
 #endif /* _GST_TRACEPOINTS_H */
 
@@ -139,6 +146,9 @@ GST_TRACEPOINT_EVENT (gst_flow_data,
 #define GST_FLOW_TRACEPOINT_BUFFER(buffer) \
   GST_TRACEPOINT (gst_flow_data, buffer, GST_TRACEPOINT_DATA_TYPE_BUFFER, NULL)
 
+#define GST_FLOW_TRACEPOINT_EVENT(event) \
+  GST_TRACEPOINT (gst_flow_event, event)
+
 #define GST_FLOW_TRACEPOINT_DATA(data, is_buffer)                       \
     do {                                                                \
       int trace_is_on = 0;                                              \
@@ -174,6 +184,7 @@ GST_TRACEPOINT_EVENT (gst_flow_data,
 #define GST_FLOW_TRACEPOINT_SEND_EVENT_ERROR(pad)
 #define GST_FLOW_TRACEPOINT_SEND_EVENT_DROPPED(pad)
 #define GST_FLOW_TRACEPOINT_BUFFER(buffer)
+#define GST_FLOW_TRACEPOINT_EVENT(event)
 #define GST_FLOW_TRACEPOINT_DATA(data, is_buffer)
 #define GST_FLOW_TRACEPOINT_BUFFER_LIST(list)
 

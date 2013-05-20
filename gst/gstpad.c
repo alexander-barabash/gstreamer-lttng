@@ -5406,6 +5406,7 @@ gst_pad_send_event (GstPad * pad, GstEvent * event)
   g_return_val_if_fail (event != NULL, FALSE);
 
   GST_OBJECT_LOCK (pad);
+  GST_FLOW_TRACEPOINT_EVENT (event);
   GST_FLOW_TRACEPOINT_SEND_EVENT_ENTER (pad, event);
   if (GST_PAD_IS_SINK (pad)) {
     if (G_UNLIKELY (!GST_EVENT_IS_DOWNSTREAM (event)))
