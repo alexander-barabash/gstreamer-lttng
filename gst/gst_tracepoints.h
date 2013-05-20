@@ -25,6 +25,7 @@
 #include "gstpad.h"
 #include "gstghostpad.h"
 #include "gstbufferlist.h"
+#include "gstevent.h"
 
 extern GstPad *_priv_gst_ghostpad_get_target (GstGhostPad *gpad);
 extern void _priv_gst_tracepoints_trace_buffer_list (GstBufferList *list);
@@ -47,6 +48,14 @@ typedef enum GstFlowTracepointDataType {
   GST_TRACEPOINT_DATA_TYPE_BUFFER_LIST = 1,
 } GstFlowTracepointDataType;
 
+typedef struct GstFlowTracepointQOSEventData {
+    GstQOSType type;
+    gdouble proportion;
+    GstClockTimeDiff diff;
+    GstClockTime timestamp;
+    gboolean data_ready;
+} GstFlowTracepointQOSEventData;
+
 #define GST_TRACEPOINT_HELPER2(...) __VA_ARGS__
 #define GST_TRACEPOINT_HELPER(...) GST_TRACEPOINT_HELPER2 (__VA_ARGS__)
 #define GST_TRACEPOINT_EVENT(name, args, fields) \
@@ -60,6 +69,7 @@ typedef enum GstFlowTracepointDataType {
 #define ctf_gst_tracepoint_kind_field(name, kind) ctf_integer (guint8, name, (guint8) (kind))
 #define ctf_gst_data_type_field(name, type) ctf_integer (guint8, name, (guint8) (type))
 #define ctf_gst_event_type_field(name, event) ctf_integer (gint, name, (gint) (event->type))
+#define ctf_gst_time_field(name, value) ctf_integer (guint64, name, (guint64) (value))
 
 #endif /* _GST_TRACEPOINTS_H */
 
@@ -98,10 +108,20 @@ GST_TRACEPOINT_EVENT (gst_flow_data,
                                  ctf_gst_data_type_field (data_type, ((trace_is_on ? (*trace_is_on = 1) : 0), data_type))))
 
 GST_TRACEPOINT_EVENT (gst_flow_event,
+                      TP_ARGS (GstEvent *, event, int *, trace_is_on),
+                      TP_FIELDS (ctf_gst_thread_id_field (thread_id)
+                                 ctf_gst_event_type_field (event_type, ((trace_is_on ? (*trace_is_on = 1) : 0), event))))
+
+GST_TRACEPOINT_EVENT (gst_flow_event_latency,
                       TP_ARGS (GstEvent *, event),
-                      TP_FIELDS (ctf_gst_data_field (event, event)
-                                 ctf_gst_thread_id_field (thread_id)
-                                 ctf_gst_event_type_field (event_type, event)))
+                      TP_FIELDS (ctf_gst_thread_id_field (thread_id)
+                                 ctf_gst_time_field (latency, gst_tracepoints_extract_event_latency (event))))
+
+GST_TRACEPOINT_EVENT (gst_flow_event_qos,
+                      TP_ARGS (GstEvent *, event, GstFlowTracepointQOSEventData *, event_data),
+                      TP_FIELDS (ctf_gst_thread_id_field (thread_id)
+                                 ctf_gst_time_field (diff, gst_tracepoints_extract_qos_event_diff (event, event_data))
+                                 ctf_float (gdouble, proportion, gst_tracepoints_extract_qos_event_proportion (event, event_data))))
 
 #endif /* _GST_TRACEPOINTS_H */
 
@@ -146,8 +166,27 @@ GST_TRACEPOINT_EVENT (gst_flow_event,
 #define GST_FLOW_TRACEPOINT_BUFFER(buffer) \
   GST_TRACEPOINT (gst_flow_data, buffer, GST_TRACEPOINT_DATA_TYPE_BUFFER, NULL)
 
-#define GST_FLOW_TRACEPOINT_EVENT(event) \
-  GST_TRACEPOINT (gst_flow_event, event)
+#define GST_FLOW_TRACEPOINT_EVENT(event)                                \
+    do {                                                                \
+        int trace_is_on = 0;                                            \
+        GST_TRACEPOINT (gst_flow_event, event, &trace_is_on);           \
+        if (trace_is_on) {                                              \
+            switch(event->type) {                                       \
+            case GST_EVENT_LATENCY:                                     \
+                GST_TRACEPOINT (gst_flow_event_latency, event);         \
+                break;                                                  \
+            case GST_EVENT_QOS:                                         \
+                {                                                       \
+                    GstFlowTracepointQOSEventData event_data;           \
+                    event_data.data_ready = FALSE;                      \
+                    GST_TRACEPOINT (gst_flow_event_qos, event, &event_data); \
+                }                                                       \
+                break;                                                  \
+            default:                                                    \
+                break;                                                  \
+            }                                                           \
+        }                                                               \
+    } while (0)
 
 #define GST_FLOW_TRACEPOINT_DATA(data, is_buffer)                       \
     do {                                                                \

@@ -30,11 +30,28 @@
 #include "gstpad.h"
 #include "gstelement.h"
 #include "gstbufferlist.h"
+#include "gstevent.h"
 
 enum GstFlowTracepointType;
 static const gchar *gst_tracepoints_get_pad_element_name_if_needed (GstPad *
     pad, enum GstFlowTracepointType tracepoint_type);
 static guint16 gst_tracepoints_get_thread_id (void);
+
+static inline GstClockTime
+gst_tracepoints_extract_event_latency (GstEvent * event)
+{
+  GstClockTime latency = 0;
+  gst_event_parse_latency (event, &latency);
+  return latency;
+}
+
+struct GstFlowTracepointQOSEventData;
+static inline GstClockTime
+gst_tracepoints_extract_qos_event_diff (GstEvent * event,
+    struct GstFlowTracepointQOSEventData *event_data);
+static inline gdouble
+gst_tracepoints_extract_qos_event_proportion (GstEvent * event,
+    struct GstFlowTracepointQOSEventData *event_data);
 
 #define GST_TRACEPOINTS_CREATE_PROBES
 #define TRACEPOINT_CREATE_PROBES
@@ -106,6 +123,33 @@ void
 _priv_gst_tracepoints_trace_buffer_list (GstBufferList * list)
 {
   gst_buffer_list_foreach (list, gst_tracepoints_trace_buffer_list_item, NULL);
+}
+
+static inline void
+gst_tracepoints_extract_qos_event_data (GstEvent * event,
+    struct GstFlowTracepointQOSEventData *event_data)
+{
+  if (!event_data->data_ready) {
+    event_data->data_ready = TRUE;
+    gst_event_parse_qos_full (event, &event_data->type, &event_data->proportion,
+        &event_data->diff, &event_data->timestamp);
+  }
+}
+
+static inline GstClockTime
+gst_tracepoints_extract_qos_event_diff (GstEvent * event,
+    struct GstFlowTracepointQOSEventData *event_data)
+{
+  gst_tracepoints_extract_qos_event_data (event, event_data);
+  return event_data->diff;
+}
+
+static inline gdouble
+gst_tracepoints_extract_qos_event_proportion (GstEvent * event,
+    struct GstFlowTracepointQOSEventData *event_data)
+{
+  gst_tracepoints_extract_qos_event_data (event, event_data);
+  return event_data->proportion;
 }
 
 #endif /* GST_ENABLE_LTTNG_TRACEPOINTS */
