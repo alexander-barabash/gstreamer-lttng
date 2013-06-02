@@ -27,6 +27,7 @@
 #include "gstbufferlist.h"
 
 extern GstPad *_priv_gst_ghostpad_get_target (GstGhostPad *gpad);
+extern void _priv_gst_tracepoints_trace_buffer_list (GstBufferList *list);
 
 enum GstFlowTracepointType {
   GST_TRACEPOINT_FLAG_ENTER = 0,
@@ -41,6 +42,11 @@ enum GstFlowTracepointKind {
   GST_TRACEPOINT_FLAG_SEND_EVENT = 2,
 };
 
+typedef enum GstFlowTracepointDataType {
+  GST_TRACEPOINT_DATA_TYPE_BUFFER = 0,
+  GST_TRACEPOINT_DATA_TYPE_BUFFER_LIST = 1,
+} GstFlowTracepointDataType;
+
 #define GST_TRACEPOINT_HELPER2(...) __VA_ARGS__
 #define GST_TRACEPOINT_HELPER(...) GST_TRACEPOINT_HELPER2 (__VA_ARGS__)
 #define GST_TRACEPOINT_EVENT(name, args, fields) \
@@ -52,6 +58,7 @@ enum GstFlowTracepointKind {
 #define ctf_gst_thread_id_field(name) ctf_integer (guint16, name, gst_tracepoints_get_thread_id ())
 #define ctf_gst_tracepoint_type_field(name, type) ctf_integer (guint8, name, (guint8) (type))
 #define ctf_gst_tracepoint_kind_field(name, kind) ctf_integer (guint8, name, (guint8) (kind))
+#define ctf_gst_data_type_field(name, type) ctf_integer (guint8, name, (guint8) (type))
 
 #endif /* _GST_TRACEPOINTS_H */
 
@@ -82,6 +89,12 @@ GST_TRACEPOINT_EVENT (gst_flow,
                                  ctf_gst_tracepoint_kind_field (tracepoint_kind, tracepoint_kind)
                                  ctf_string (element_name,
                                              gst_tracepoints_get_pad_element_name_if_needed (pad, tracepoint_type))))
+
+GST_TRACEPOINT_EVENT (gst_flow_data,
+                      TP_ARGS (void *, data, GstFlowTracepointDataType, data_type, int *, trace_is_on),
+                      TP_FIELDS (ctf_integer (guint, size, (data_type == GST_TRACEPOINT_DATA_TYPE_BUFFER) ? ((GstBuffer *) (data))->size : 0)
+                                 ctf_gst_thread_id_field (thread_id)
+                                 ctf_gst_data_type_field (data_type, ((trace_is_on ? (*trace_is_on = 1) : 0), data_type))))
 
 #endif /* _GST_TRACEPOINTS_H */
 
@@ -123,6 +136,27 @@ GST_TRACEPOINT_EVENT (gst_flow,
 #define GST_FLOW_TRACEPOINT_SEND_EVENT_DROPPED(pad) \
     GST_TRACEPOINT (gst_flow, pad, NULL, GST_FLOW_OK, GST_TRACEPOINT_FLAG_SEND_EVENT, GST_TRACEPOINT_FLAG_DROPPED)
 
+#define GST_FLOW_TRACEPOINT_BUFFER(buffer) \
+  GST_TRACEPOINT (gst_flow_data, buffer, GST_TRACEPOINT_DATA_TYPE_BUFFER, NULL)
+
+#define GST_FLOW_TRACEPOINT_DATA(data, is_buffer)                       \
+    do {                                                                \
+      int trace_is_on = 0;                                              \
+      GST_TRACEPOINT (gst_flow_data, data, G_LIKELY (is_buffer) ? GST_TRACEPOINT_DATA_TYPE_BUFFER : GST_TRACEPOINT_DATA_TYPE_BUFFER_LIST, &trace_is_on); \
+      if (trace_is_on && G_UNLIKELY (!is_buffer)) {                     \
+          _priv_gst_tracepoints_trace_buffer_list (data);               \
+      }                                                                 \
+  } while (0)
+
+#define GST_FLOW_TRACEPOINT_BUFFER_LIST(list)                           \
+  do {                                                                  \
+    int trace_is_on = 0;                                                \
+    GST_TRACEPOINT (gst_flow_data, list, GST_TRACEPOINT_DATA_TYPE_BUFFER_LIST, &trace_is_on); \
+    if (trace_is_on) {                                                  \
+      _priv_gst_tracepoints_trace_buffer_list (list);                   \
+    }                                                                   \
+  } while (0)
+
 #define GST_TRACEPOINT(...) tracepoint (Gst, __VA_ARGS__)
 
 #else /* !GST_ENABLE_LTTNG_TRACEPOINTS */
@@ -139,6 +173,9 @@ GST_TRACEPOINT_EVENT (gst_flow,
 #define GST_FLOW_TRACEPOINT_SEND_EVENT_EXIT(pad, ret)
 #define GST_FLOW_TRACEPOINT_SEND_EVENT_ERROR(pad)
 #define GST_FLOW_TRACEPOINT_SEND_EVENT_DROPPED(pad)
+#define GST_FLOW_TRACEPOINT_BUFFER(buffer)
+#define GST_FLOW_TRACEPOINT_DATA(data, is_buffer)
+#define GST_FLOW_TRACEPOINT_BUFFER_LIST(list)
 
 #define GST_TRACEPOINT(...)
 

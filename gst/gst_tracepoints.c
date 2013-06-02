@@ -29,6 +29,7 @@
 #include "glib.h"
 #include "gstpad.h"
 #include "gstelement.h"
+#include "gstbufferlist.h"
 
 enum GstFlowTracepointType;
 static const gchar *gst_tracepoints_get_pad_element_name_if_needed (GstPad *
@@ -87,6 +88,24 @@ gst_tracepoints_get_thread_id (void)
     g_private_set (&key, (gpointer) thread_id);
   }
   return thread_id;
+}
+
+static GstBufferListItem
+gst_tracepoints_trace_buffer_list_item (GstBuffer ** buffer, guint group,
+    guint idx, gpointer user_data)
+{
+  if (*buffer != NULL) {
+    GST_TRACEPOINT (gst_flow_data, *buffer,
+        GST_TRACEPOINT_DATA_TYPE_BUFFER, NULL);
+  }
+
+  return GST_BUFFER_LIST_CONTINUE;
+}
+
+void
+_priv_gst_tracepoints_trace_buffer_list (GstBufferList * list)
+{
+  gst_buffer_list_foreach (list, gst_tracepoints_trace_buffer_list_item, NULL);
 }
 
 #endif /* GST_ENABLE_LTTNG_TRACEPOINTS */

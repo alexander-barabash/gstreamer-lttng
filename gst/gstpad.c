@@ -4224,6 +4224,7 @@ gst_pad_chain_data_unchecked (GstPad * pad, gboolean is_buffer, void *data,
   GST_PAD_STREAM_LOCK (pad);
 
   GST_OBJECT_LOCK (pad);
+  GST_FLOW_TRACEPOINT_DATA (data, is_buffer);
   GST_FLOW_TRACEPOINT_PUSH_ENTER (pad, data);
   if (G_UNLIKELY (GST_PAD_IS_FLUSHING (pad)))
     goto flushing;
@@ -4469,6 +4470,7 @@ gst_pad_push_data (GstPad * pad, gboolean is_buffer, void *data,
 
   GST_OBJECT_LOCK (pad);
 
+  GST_FLOW_TRACEPOINT_DATA (data, is_buffer);
   GST_FLOW_TRACEPOINT_PUSH_ENTER (pad, data);
 
   /* FIXME: this check can go away; pad_set_blocked could be implemented with
@@ -4732,6 +4734,7 @@ gst_pad_push (GstPad * pad, GstBuffer * buffer)
       "calling chainfunction &%s with buffer %" GST_PTR_FORMAT,
       GST_DEBUG_FUNCPTR_NAME (GST_PAD_CHAINFUNC (peer)), buffer);
 
+  GST_FLOW_TRACEPOINT_BUFFER (buffer);
   GST_FLOW_TRACEPOINT_PUSH_ENTER (peer, buffer);
 
   ret = GST_PAD_CHAINFUNC (peer) (peer, buffer);
@@ -4853,6 +4856,7 @@ gst_pad_push_list (GstPad * pad, GstBufferList * list)
   if (G_UNLIKELY (g_atomic_pointer_get (cache_ptr) == PAD_CACHE_INVALID))
     goto invalid;
 
+  GST_FLOW_TRACEPOINT_BUFFER_LIST (list);
   GST_FLOW_TRACEPOINT_PUSH_ENTER (peer, list);
 
   ret = GST_PAD_CHAINLISTFUNC (peer) (peer, list);
@@ -5019,6 +5023,7 @@ gst_pad_get_range_unchecked (GstPad * pad, guint64 offset, guint size,
     if (G_UNLIKELY (!gst_pad_configure_src (pad, caps, TRUE)))
       goto not_negotiated;
   }
+  GST_FLOW_TRACEPOINT_BUFFER (*buffer);
   GST_FLOW_TRACEPOINT_PULL_EXIT (pad, *buffer, ret);
   return ret;
 
@@ -5191,6 +5196,7 @@ gst_pad_pull_range (GstPad * pad, guint64 offset, guint size,
     if (G_UNLIKELY (!gst_pad_configure_sink (pad, caps)))
       goto not_negotiated;
   }
+  GST_FLOW_TRACEPOINT_BUFFER (*buffer);
   GST_FLOW_TRACEPOINT_PULL_EXIT (pad, *buffer, ret);
   return ret;
 
